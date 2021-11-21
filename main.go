@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"time"
 
@@ -69,16 +68,6 @@ func main() {
 		AsyncFunctionInvocation:  asyncInvoke,
 	}
 
-	// create openfaas controller
-	controller := types.NewController(creds, config)
-
-	// create response receiver
-	receiver := ResponseReceiver{}
-
-	// subscribe controller to receiver
-	controller.Subscribe(&receiver)
-	controller.BeginMapBuilder()
-
 	// create a new libp2p Host that listens on a random TCP port
 	h, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"))
 	if err != nil {
@@ -96,49 +85,22 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// join the pubsub topic
-	topic, err := ps.Join("test-topic")
+	connector, err := NewConnector(
+		ps,
+		"test-topic",
+		creds,
+		config,
+		&ResponseReceiver{},
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// and subscribe to it
-	sub, err := topic.Subscribe()
-	if err != nil {
+	if err := connector.Run(
+		ctx,
+		h.ID(),
+	); err != nil {
 		log.Fatal(err)
-	}
-
-	go func() {
-		for {
-			if err := topic.Publish(
-				ctx,
-				[]byte(fmt.Sprintf("hello from peer %s", h.ID())),
-			); err != nil {
-				log.Fatal(err)
-			}
-			time.Sleep(5 * time.Second)
-
-		}
-	}()
-
-	for {
-		msg, err := sub.Next(ctx)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// only forward messages delivered by others
-		if msg.ReceivedFrom == h.ID() {
-			continue
-		}
-
-		log.Printf("Invoking (%s) on topic: %q, value: %q", gatewayURL, topic, msg.Data)
-
-		controller.Invoke(
-			msg.GetTopic(),
-			&msg.Data,
-			http.Header{},
-		)
 	}
 }
 
