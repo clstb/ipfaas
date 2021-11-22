@@ -9,12 +9,14 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/openfaas/connector-sdk/types"
 	"github.com/openfaas/faas-provider/auth"
+	"go.uber.org/zap"
 )
 
 type Connector struct {
 	controller   types.Controller
 	topic        *pubsub.Topic
 	subscription *pubsub.Subscription
+	logger       *zap.Logger
 }
 
 func NewConnector(
@@ -23,6 +25,7 @@ func NewConnector(
 	controllerCreds *auth.BasicAuthCredentials,
 	controllerConfig *types.ControllerConfig,
 	subscriber types.ResponseSubscriber,
+	logger *zap.Logger,
 ) (*Connector, error) {
 	topic, err := ps.Join(topicName)
 	if err != nil {
@@ -43,6 +46,7 @@ func NewConnector(
 		topic:        topic,
 		subscription: subscription,
 		controller:   controller,
+		logger:       logger,
 	}, nil
 }
 
@@ -56,6 +60,11 @@ func (c *Connector) Run(
 		if err != nil {
 			return fmt.Errorf("receiving message: %w", err)
 		}
+		c.logger.Info(
+			"received message",
+			zap.Stringp("topic", msg.Topic),
+			zap.ByteString("data", msg.Data),
+		)
 
 		// the connector should not be sending message anyways
 		// we discard own messages anyway just to be sure
