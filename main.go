@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/clstb/ipfs-connector/cmd"
 	"github.com/urfave/cli/v2"
 )
 
@@ -44,6 +45,18 @@ func main() {
 						EnvVars: []string{"TOPICS_ASYNC"},
 					},
 				},
+				Action: cmd.Run,
+			},
+			{
+				Name:  "gossiper",
+				Usage: "runs a peer that send dummy messages on a topic",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "topic",
+						Required: true,
+					},
+				},
+				Action: cmd.Gossiper,
 			},
 		},
 	}
