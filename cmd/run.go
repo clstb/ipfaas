@@ -3,10 +3,11 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/clstb/ipfs-connector/pkg/connector"
+	"github.com/clstb/ipfs-connector/pkg/subscriber"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/libp2p/go-libp2p"
@@ -45,36 +46,28 @@ func setupDiscovery(h host.Host) error {
 	return s.Start()
 }
 
-// ResponseReceiver enables connector to receive results from the
-// function invocation
-type ResponseReceiver struct{}
-
-// Response is triggered by the controller when a message is
-// received from the function invocation
-func (ResponseReceiver) Response(res types.InvokerResponse) {
-	if res.Error != nil {
-		log.Printf("tester got error: %s", res.Error.Error())
-	} else {
-		log.Printf("tester got result: [%d] %s => %s (%d) bytes", res.Status, res.Topic, res.Function, len(*res.Body))
-	}
-}
-
 func Run(ctx *cli.Context) error {
+	logger, err := zap.NewProduction()
+	if err != nil {
+		return err
+	}
+	defer logger.Sync()
+
 	// create a new libp2p Host that listens on a random TCP port
 	h, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// create a new PubSub service using the GossipSub router
 	ps, err := pubsub.NewGossipSub(ctx.Context, h)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// setup local mDNS discovery
 	if err := setupDiscovery(h); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	gatewayURL := ctx.String("gateway-url")
@@ -85,8 +78,12 @@ func Run(ctx *cli.Context) error {
 	}
 
 	var connectors []*connector.Connector
+	logSubcriber := subscriber.NewLogSubscriber(logger)
 
-	for _, topic := range ctx.StringSlice("topics") {
+	topics := ctx.StringSlice("topics")
+	topicsAsync := ctx.StringSlice("async-topics")
+
+	for i, topic := range append(topics, topicsAsync...) {
 		connector, err := connector.NewConnector(
 			ps,
 			topic,
@@ -94,33 +91,11 @@ func Run(ctx *cli.Context) error {
 			&types.ControllerConfig{
 				RebuildInterval:          time.Millisecond * 1000,
 				GatewayURL:               gatewayURL,
-				PrintResponse:            true,
-				PrintResponseBody:        true,
 				TopicAnnotationDelimiter: ",",
-				AsyncFunctionInvocation:  false,
+				AsyncFunctionInvocation:  i >= len(topics),
 			},
-			&ResponseReceiver{},
-		)
-		if err != nil {
-			return fmt.Errorf("creating connector: %w", err)
-		}
-		connectors = append(connectors, connector)
-	}
-
-	for _, topic := range ctx.StringSlice("topics-async") {
-		connector, err := connector.NewConnector(
-			ps,
-			topic,
-			creds,
-			&types.ControllerConfig{
-				RebuildInterval:          time.Millisecond * 1000,
-				GatewayURL:               gatewayURL,
-				PrintResponse:            true,
-				PrintResponseBody:        true,
-				TopicAnnotationDelimiter: ",",
-				AsyncFunctionInvocation:  true,
-			},
-			&ResponseReceiver{},
+			logSubcriber,
+			logger,
 		)
 		if err != nil {
 			return fmt.Errorf("creating connector: %w", err)
@@ -131,8 +106,9 @@ func Run(ctx *cli.Context) error {
 	g := &errgroup.Group{}
 
 	for _, connector := range connectors {
+		c := connector
 		g.Go(func() error {
-			return connector.Run(ctx.Context, h.ID())
+			return c.Run(ctx.Context, h.ID())
 		})
 	}
 
