@@ -9,5 +9,6 @@ require (
 	github.com/openfaas/connector-sdk v0.6.4
 	github.com/openfaas/faas-provider v0.16.1
 	github.com/urfave/cli/v2 v2.3.0
+	go.uber.org/zap v1.19.0
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 )
