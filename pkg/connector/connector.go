@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap"
 )
 
+// Connector is a communication channel between a pubsub topic
+// and the openfaas gateway.
 type Connector struct {
 	controller   types.Controller
 	topic        *pubsub.Topic
@@ -19,6 +21,11 @@ type Connector struct {
 	logger       *zap.Logger
 }
 
+// NewConnector creates a new connector wit the provided pubsub network.
+// It will try to join the provided topic and setup the openfaas controller in
+// order to communicate with the openfaas gateway. Responses returned by the
+// gateway will be handled by the passed subscriber. After creation call it's
+// Run to start handling messages.
 func NewConnector(
 	ps *pubsub.PubSub,
 	topicName string,
@@ -50,6 +57,9 @@ func NewConnector(
 	}, nil
 }
 
+// Run start loop that passes messages this connector receives to the openfaas
+// gateway via the connectors controller. Messages of passed peerID are dropped.
+// It can be stopped using the passed context.
 func (c *Connector) Run(
 	ctx context.Context,
 	peerID peer.ID,
