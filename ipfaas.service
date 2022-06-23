@@ -1,0 +1,11 @@
+[Unit]
+Description=IPFaaS
+After=containerd.service
+
+[Service]
+ExecStart=/usr/local/bin/ipfaas
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

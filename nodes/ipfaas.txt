@@ -1,0 +1,44 @@
+ssh_authorized_keys:
+- ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDB6WkPhqpFdM59Tt2u+E2/S1FPNFpdGayh48PZsVujm+Z/dtGsdZ2jZ5s4RToCacLhqTWB1594nvJV1MBNcqwxx9OcuLm7ZM3W6AEiuZIiGB2E0fJvS0MfvAS7xqAlCXWUKsC4+efR0AxYFOJXk2/Qf1jjFkjxb572a/BRxIzQjBn/5yLKhaCwE/1fx5IqfcuNUMDvEAYKD1VpSanh/9SimWz9BGUMLSLA3S5i7R40o5Wx6I625xLTixXq+t1uGFVFfkMy35MG3ngBfO8vbiM7hC+s2dgh44XzKKY0n4u9hOqLt0wgEOPCKJmigj1PGVUmA6F3xDcPnXZw2k89VINPbV0uwk7VuUN4rjmY19OUx4qPC8aPrT0XbndmMhv7KFkXkeKYuuweYRWg4L3K1xbLUxHymPXxieW0cZIzeZYYGJCzUaVYN+g2EpOZu3JSoyUf1TWx2tRaM5ke0NDuUgFEaqaFuoUGti12joz/1/HTRAWOqpuiAC5/R2yPw/x/VC9jqmauN45ZjrA7r+vuh6uEmQzmH91GM4vWehFkYMzErM8RRLHVk2LjWGKthXBs2ksnX4txU/pWpx7qnZ0jCCcnvinO+EX6B+UO8u0OTd0D5dF++EPv0bglm7IbekKvOnzF0db1Bt2B5K4HNXarSkzl1GAnPIXMgGYdXmhnC6nSNw==
+
+package_update: true
+
+packages:
+- gcc
+- git
+- wget
+
+runcmd:
+- wget https://go.dev/dl/go1.18.4.linux-arm64.tar.gz
+- tar -C /usr/local -xzf go1.18.4.linux-arm64.tar.gz
+- export PATH=$PATH:/usr/local/go/biexport PATH=$PATH:/usr/local/go/binn
+
+- wget https://github.com/opencontainers/runc/releases/download/v1.1.0/runc.arm64
+- install -m 755 runc.arm64 /usr/local/sbin/runc
+
+- mkdir -p /opt/cni/bin
+- wget https://github.com/containernetworking/plugins/releases/download/v0.9.1/cni-plugins-linux-arm64-v0.9.1.tgz
+- tar -xvf cni-plugins-linux-arm64-v0.9.1.tgz -C /opt/cni/bin
+
+
+- wget https://github.com/containerd/containerd/releases/download/v1.6.4/containerd-1.6.4-linux-arm64.tar.gz
+- tar Czxvf /usr/local containerd-1.6.4-linux-arm64.tar.gz
+- wget https://raw.githubusercontent.com/containerd/containerd/main/containerd.service
+- mv containerd.service /usr/lib/systemd/system/containerd.service
+- systemctl start containerd.service
+
+- wget https://github.com/openfaas/faasd/releases/download/0.16.0/faasd-arm64
+- chmod +x faasd-arm64
+- mv ./faasd-arm64 /usr/local/bin/faasd
+- mkdir /var/lib/faasd
+- touch /var/lib/faasd/resolv.conf
+- touch /var/lib/faasd/hosts
+
+- git clone https://github.com/clstb/ipfaas
+- cd ./ipfaas
+- export GOMODCACHE=/tmp/go-mod-cache
+- export GOCACHE=/tmp/go-cache
+- go build .
+- mv ./ipfaas /usr/local/bin/ipfaas
+- mv ./ipfaas.service /usr/lib/systemd/system/ipfaas.service
+- systemctl start ipfaas.service

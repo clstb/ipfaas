@@ -1,0 +1,40 @@
+ssh_authorized_keys:
+- ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDB6WkPhqpFdM59Tt2u+E2/S1FPNFpdGayh48PZsVujm+Z/dtGsdZ2jZ5s4RToCacLhqTWB1594nvJV1MBNcqwxx9OcuLm7ZM3W6AEiuZIiGB2E0fJvS0MfvAS7xqAlCXWUKsC4+efR0AxYFOJXk2/Qf1jjFkjxb572a/BRxIzQjBn/5yLKhaCwE/1fx5IqfcuNUMDvEAYKD1VpSanh/9SimWz9BGUMLSLA3S5i7R40o5Wx6I625xLTixXq+t1uGFVFfkMy35MG3ngBfO8vbiM7hC+s2dgh44XzKKY0n4u9hOqLt0wgEOPCKJmigj1PGVUmA6F3xDcPnXZw2k89VINPbV0uwk7VuUN4rjmY19OUx4qPC8aPrT0XbndmMhv7KFkXkeKYuuweYRWg4L3K1xbLUxHymPXxieW0cZIzeZYYGJCzUaVYN+g2EpOZu3JSoyUf1TWx2tRaM5ke0NDuUgFEaqaFuoUGti12joz/1/HTRAWOqpuiAC5/R2yPw/x/VC9jqmauN45ZjrA7r+vuh6uEmQzmH91GM4vWehFkYMzErM8RRLHVk2LjWGKthXBs2ksnX4txU/pWpx7qnZ0jCCcnvinO+EX6B+UO8u0OTd0D5dF++EPv0bglm7IbekKvOnzF0db1Bt2B5K4HNXarSkzl1GAnPIXMgGYdXmhnC6nSNw==
+
+package_update: true
+
+packages:
+- git
+- wget
+
+runcmd:
+- wget https://go.dev/dl/go1.18.4.linux-arm64.tar.gz
+- tar -C /usr/local -xzf go1.18.4.linux-arm64.tar.gz
+- export PATH=$PATH:/usr/local/go/bin
+
+- apt-get install -y haproxy
+- systemctl start haproxy.service
+
+- git clone https://github.com/UNIMIBInside/dfaas
+- git clone --branch 0.16.0 https://github.com/openfaas/faasd
+
+- rm ./faasd/hack/install.sh
+- mv ./dfaas/docker/files/faasd/hack/install.sh ./faasd/hack/install.sh
+- chmod +x ./faasd/hack/install.sh
+- cd ./faasd && ./hack/install.sh && cd ../
+
+- echo "admin" > /var/lib/faasd/secrets/basic-auth-password
+- systemctl start faasd.service
+- systemctl start faasd-provider.service
+- systemctl start containerd.service
+
+- cd ./dfaas/dfaasagent
+- export GOMODCACHE=/tmp/go-mod-cache
+- export GOCACHE=/tmp/go-cache
+- go build .
+- mkdir -p /agent
+- mv ./dfaasagent /agent/dfaasagent
+- curl https://raw.githubusercontent.com/clstb/ipfaas/main/haproxycfg.tmpl -o /agent/haproxycfg.tmpl
+- mv ../dfaasagent.env /agent/dfaasagent.env
+- mv ../docker/files/dfaasagent/dfaasagent.service /etc/systemd/system/dfaasagent.service
+- systemctl start dfaasagent.service
