@@ -148,7 +148,7 @@ func (s *Server) FunctionHandler() fiber.Handler {
 		now := time.Now()
 		defer func() {
 			s.latencyCh <- scheduler.Latency{
-				NodeId:       s.ipfs.NodeId,
+				NodeId:       nodeId,
 				FunctionName: functionName,
 				Value:        time.Since(now).Microseconds(),
 			}

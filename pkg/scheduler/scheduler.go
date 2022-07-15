@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"fmt"
-	"math"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -22,21 +22,22 @@ type heatbeatWithExpiry struct {
 }
 
 type Scheduler struct {
-	latencies           *sync.Map
-	heartbeats          *sync.Map
-	nodeIdsByFunction   *sync.Map
-	outstandingRequests *sync.Map
+	latencies         *sync.Map
+	heartbeats        *sync.Map
+	nodeIdsByFunction *sync.Map
+	inflightRequests  *sync.Map
 }
 
 func New(
 	latencyCh <-chan Latency,
 	heartbeatCh <-chan messages.Heartbeat,
 ) *Scheduler {
+	rand.Seed(time.Now().Unix())
 	s := &Scheduler{
-		latencies:           &sync.Map{},
-		heartbeats:          &sync.Map{},
-		nodeIdsByFunction:   &sync.Map{},
-		outstandingRequests: &sync.Map{},
+		latencies:         &sync.Map{},
+		heartbeats:        &sync.Map{},
+		nodeIdsByFunction: &sync.Map{},
+		inflightRequests:  &sync.Map{},
 	}
 	go func() {
 		ewmas := map[string]ewma.MovingAverage{}
@@ -50,10 +51,9 @@ func New(
 			ewmas[key] = avg
 			s.latencies.Store(key, avg.Value())
 
-			v, ok := s.outstandingRequests.Load(key)
+			v, ok := s.inflightRequests.Load(key)
 			if ok {
-				outstandingRequest := v.(uint)
-				s.outstandingRequests.Store(key, outstandingRequest-1)
+				s.inflightRequests.Store(key, v.(int)-1)
 			}
 		}
 	}()
@@ -79,6 +79,14 @@ func New(
 				}
 				return true
 			})
+			s.inflightRequests.Range(func(key, value interface{}) bool {
+				fmt.Println(key, value)
+				return true
+			})
+			s.latencies.Range(func(key, value interface{}) bool {
+				fmt.Println(key, value)
+				return true
+			})
 			for k, v := range m {
 				s.nodeIdsByFunction.Store(k, v)
 			}
@@ -88,6 +96,27 @@ func New(
 	return s
 }
 
+func (s *Scheduler) calcLoad(nodeId, functionName string) (float64, int) {
+	key := nodeId + "." + functionName
+	var avg float64
+	v, ok := s.latencies.Load(key)
+	if !ok {
+		avg = 0
+	} else {
+		avg = v.(float64)
+	}
+
+	var requests int
+	v, ok = s.inflightRequests.Load(key)
+	if !ok {
+		requests = 0
+	} else {
+		requests = v.(int)
+	}
+
+	return avg * float64(requests), requests
+}
+
 func (s *Scheduler) Schedule(functionName string) (string, error) {
 	v, ok := s.nodeIdsByFunction.Load(functionName)
 	if !ok {
@@ -95,35 +124,25 @@ func (s *Scheduler) Schedule(functionName string) (string, error) {
 	}
 
 	nodeIds := v.([]string)
-	var nodeId string
-	var outstandingRequests uint
-	load := math.MaxFloat64
-	for _, id := range nodeIds {
-		key := id + "." + functionName
-		v, ok := s.latencies.Load(key)
-		if !ok {
-			nodeId = id
-			break
-		}
-		avg := v.(float64)
-
-		v, ok = s.outstandingRequests.Load(key)
-		if !ok {
-			nodeId = id
-			break
-		}
-		requests := v.(uint)
-
-		l := float64(requests) * avg
-		if load > l {
-			nodeId = id
-			load = l
-			outstandingRequests = requests
-		}
+	firstNode := nodeIds[rand.Intn(len(nodeIds))]
+	secondNode := nodeIds[rand.Intn(len(nodeIds))]
+	for secondNode == firstNode {
+		secondNode = nodeIds[rand.Intn(len(nodeIds))]
 	}
-	go func() {
-		s.outstandingRequests.Store(nodeId+"."+functionName, outstandingRequests+1)
-	}()
 
+	firstLoad, firstRequests := s.calcLoad(firstNode, functionName)
+	secondLoad, secondRequests := s.calcLoad(secondNode, functionName)
+
+	var nodeId string
+	var requests int
+	if firstLoad < secondLoad {
+		nodeId = firstNode
+		requests = firstRequests
+	} else {
+		nodeId = secondNode
+		requests = secondRequests
+	}
+
+	s.inflightRequests.Store(nodeId+"."+functionName, requests+1)
 	return nodeId, nil
 }
