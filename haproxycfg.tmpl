@@ -83,14 +83,6 @@ frontend fe_main
     acl is_func_{{$funcName}} path_beg /function/{{$funcName}}
     {{end}}
 
-    {{/* ########## IF THE REQUEST COMES FROM ANOTHER DFAAS NODE (has_nodeid_hdr) ########## */ -}}
-
-    {{/* Deny request if rate limit exceeded */ -}}
-    {{range $funcName, $func := .Functions -}}
-    {{- /* # acl is_denied_rate_func_{{$funcName}} src,table_http_req_rate(st_src_func_{{$funcName}}) ge MAP_HERE {{mul $func.Limit $.SecsRecalc}} # i.e. {{$func.Limit}} req/s*/}}
-    {{- /* # http-request deny deny_status 429 if is_func_{{$funcName}} is_denied_rate_func_{{$funcName}} {{- /* Conditions are ANDed */}}
-    {{end}}
-
     {{/* ########## IF THE REQUEST COMES FROM A USER (!has_nodeid_hdr) ########## */ -}}
 
     {{/* If the invocation rate (across all clients) is greater than the total
@@ -141,24 +133,10 @@ frontend fe_main
     */ -}}
     http-request deny deny_status 403 if has_nodeid_hdr !is_hdr_nodeID_known
     
-    {{/* [NEW] Deny requests that exceed limitIn */ -}}
-    {{/*
-    {{range $funcName, $func := .Functions -}}
-    {{range $nodeID, $limitIn := $func.LimitsIn -}}
-    http-request deny deny_status 429 if has_nodeid_hdr limitIn_saturated_{{$funcName}}_{{$nodeID}}
-    {{end}}
-    {{end}}
-    */ -}}
-
     {{/* ########## BACKEND SELECTION ########## */ -}}
 
     use_backend be_ok if is_path_root
     {{range $funcName, $func := .Functions -}}
-
-    {{/* [NEW] Select backend for request that exeeds limitsIn */ -}}
-    {{range $nodeID, $limitIn := $func.LimitsIn -}}
-    use_backend be_limitInExceeds if is_func_{{$funcName}} is_node_{{$nodeID}} has_nodeid_hdr limitIn_saturated_{{$funcName}}_{{$nodeID}} {{- /* Conditions are ANDed */}} 
-    {{end}}
 
     use_backend be_myself if is_func_{{$funcName}} has_nodeid_hdr {{- /* Conditions are ANDed */}}
     use_backend be_myself if is_func_{{$funcName}} !local_capacity_exceeded_func_{{$funcName}} {{- /* Conditions are ANDed */}}
@@ -239,11 +217,3 @@ backend be_others_func_{{$funcName}}
     {{end -}}
     {{end}}
 {{end}}
-
-{{/* [NEW] #################### BACKEND FOR DENY EXCEEDING LIMIT IN REQUESTS #################### */ -}}
-{{/* Note: It could be divided in alla specific be for nodes and functions and returns a specific error message */ -}}
-{{/* 503 (Service Unavailable) status code can be used.
-    At the moment 429 has been used for test purpose. */}}
-backend be_limitInExceeds
-    http-request deny deny_status 429
-
