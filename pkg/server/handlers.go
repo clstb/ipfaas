@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/clstb/ipfaas/pkg/messages"
@@ -14,29 +13,18 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/ipfs/go-cid"
-	icore "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/valyala/fasthttp"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-func (s *Server) handleFunctionRequest(msg icore.PubSubMessage) error {
+func (s *Server) handleFunctionRequest(functionRequest messages.FunctionRequest) error {
 	ctx := context.Background()
 
-	functionRequest := messages.FunctionRequest{}
-	if err := msgpack.Unmarshal(msg.Data(), &functionRequest); err != nil {
-		return fmt.Errorf("parsing message: %w", err)
-	}
-
-	if functionRequest.NodeId != s.ipfs.NodeId {
-		return nil
-	}
-
-	name := strings.TrimSuffix(msg.Topics()[0], "_requests")
-
-	addr, ok := s.resolver.Resolve(name)
+	functionName := functionRequest.FunctionName
+	addr, ok := s.resolver.Resolve(functionRequest.FunctionName)
 	if !ok {
-		return fmt.Errorf("resolving function: %s", name)
+		return fmt.Errorf("resolving function: %s", functionName)
 	}
 
 	url, err := url.Parse(addr)
@@ -73,7 +61,7 @@ func (s *Server) handleFunctionRequest(msg icore.PubSubMessage) error {
 	defer fasthttp.ReleaseResponse(res)
 
 	if err := s.client.Do(req, res); err != nil {
-		return fmt.Errorf("calling function: %s: %w", name, err)
+		return fmt.Errorf("calling function: %s: %w", functionName, err)
 	}
 
 	functionResponse := messages.FunctionResponse{
@@ -100,7 +88,7 @@ func (s *Server) handleFunctionRequest(msg icore.PubSubMessage) error {
 
 	if err := s.ipfs.PubSub().Publish(
 		ctx,
-		name+"_responses",
+		functionName+"_responses",
 		b,
 	); err != nil {
 		return fmt.Errorf("publishing message: %w", err)

@@ -13,6 +13,7 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/go-cni"
 	"github.com/gofiber/fiber/v2"
+	icore "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/valyala/fasthttp"
@@ -76,20 +77,6 @@ func New(
 			topic := msg.Topics()[0]
 			var err error
 			switch {
-			case topic == "heartbeats":
-				heartbeat := messages.Heartbeat{}
-				if err = msgpack.Unmarshal(msg.Data(), &heartbeat); err != nil {
-					break
-				}
-
-				if msg.From().String() == ipfs.NodeId {
-					for _, function := range heartbeat.Functions {
-						err = s.ipfs.Subscribe(ctx, function+"_requests")
-						err = s.ipfs.Subscribe(ctx, function+"_responses")
-					}
-				}
-
-				heartbeatCh <- heartbeat
 			case strings.HasSuffix(topic, "_responses"):
 				if msg.From().String() == ipfs.NodeId {
 					continue
@@ -97,17 +84,45 @@ func New(
 
 				functionResponse := messages.FunctionResponse{}
 				if err = msgpack.Unmarshal(msg.Data(), &functionResponse); err != nil {
-					break
+					continue
 				}
 
 				v, ok := s.offloads.Load(functionResponse.RequestId)
 				if !ok {
-					break
+					continue
 				}
 				ch := v.(chan messages.FunctionResponse)
 				ch <- functionResponse
 			case strings.HasSuffix(topic, "_requests"):
-				err = s.handleFunctionRequest(msg)
+				if msg.From().String() == ipfs.NodeId {
+					continue
+				}
+
+				functionRequest := messages.FunctionRequest{}
+				if err := msgpack.Unmarshal(msg.Data(), &functionRequest); err != nil {
+					continue
+				}
+
+				if functionRequest.NodeId != s.ipfs.NodeId {
+					continue
+				}
+
+				go s.handleFunctionRequest(functionRequest)
+			case topic == "heartbeats":
+				go func(msg icore.PubSubMessage) {
+					heartbeat := messages.Heartbeat{}
+					if err = msgpack.Unmarshal(msg.Data(), &heartbeat); err != nil {
+						return
+					}
+
+					if msg.From().String() == ipfs.NodeId {
+						for _, function := range heartbeat.Functions {
+							err = s.ipfs.Subscribe(ctx, function+"_requests")
+							err = s.ipfs.Subscribe(ctx, function+"_responses")
+						}
+					}
+					heartbeatCh <- heartbeat
+				}(msg)
 			}
 			if err != nil {
 				logger.Error("handling message", zap.Error(err))
