@@ -92,7 +92,7 @@ func (s *Server) handleFunctionRequest(msg icore.PubSubMessage) error {
 		functionResponse.IsCID = true
 	}
 
-	b, err := msgpack.Marshal(&res)
+	b, err := msgpack.Marshal(&functionResponse)
 	if err != nil {
 		return fmt.Errorf("marshalling message: %w", err)
 	}

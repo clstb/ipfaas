@@ -11,7 +11,7 @@ packages:
 runcmd:
 - wget https://go.dev/dl/go1.18.4.linux-arm64.tar.gz
 - tar -C /usr/local -xzf go1.18.4.linux-arm64.tar.gz
-- export PATH=$PATH:/usr/local/go/biexport PATH=$PATH:/usr/local/go/binn
+- export PATH=$PATH:/usr/local/go/bin
 
 - wget https://github.com/opencontainers/runc/releases/download/v1.1.0/runc.arm64
 - install -m 755 runc.arm64 /usr/local/sbin/runc
