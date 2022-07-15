@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/clstb/ipfaas/pkg/messages"
 	"github.com/clstb/ipfaas/pkg/scheduler"
@@ -109,7 +110,9 @@ func (s *Server) handleFunctionRequest(msg icore.PubSubMessage) error {
 }
 
 func (s *Server) FunctionHandler() fiber.Handler {
-	offload := func(functionName, requestId, nodeId string, c *fiber.Ctx) error {
+	offload := func(functionName, nodeId string, c *fiber.Ctx) error {
+		requestId := utils.UUIDv4()
+
 		ch := make(chan messages.FunctionResponse)
 		headers := c.GetReqHeaders()
 		_, isCID := headers["Ipfaas-Is-Cid"]
@@ -134,22 +137,6 @@ func (s *Server) FunctionHandler() fiber.Handler {
 		s.offloads.Store(requestId, ch)
 		defer s.offloads.Delete(requestId)
 
-		go func() {
-			s.latencyCh <- scheduler.Latency{
-				NodeId:       s.ipfs.NodeId,
-				FunctionName: functionName,
-				RequestId:    requestId,
-			}
-		}()
-		defer func() {
-			s.latencyCh <- scheduler.Latency{
-				NodeId:       s.ipfs.NodeId,
-				FunctionName: functionName,
-				RequestId:    requestId,
-				Done:         true,
-			}
-		}()
-
 		if err := s.ipfs.PubSub().Publish(
 			c.Context(),
 			functionName+"_requests",
@@ -158,12 +145,21 @@ func (s *Server) FunctionHandler() fiber.Handler {
 			return fmt.Errorf("publishing message: %w", err)
 		}
 
+		now := time.Now()
+		defer func() {
+			s.latencyCh <- scheduler.Latency{
+				NodeId:       s.ipfs.NodeId,
+				FunctionName: functionName,
+				Value:        time.Since(now).Microseconds(),
+			}
+		}()
+
 		res := <-ch
 
 		c.Response().Header = res.Header
 		return c.Send(res.Data)
 	}
-	handle := func(functionName, requestId string, c *fiber.Ctx) error {
+	handle := func(functionName string, c *fiber.Ctx) error {
 		addr, ok := s.resolver.Resolve(functionName)
 		if !ok {
 			return fmt.Errorf("resolving function")
@@ -171,21 +167,15 @@ func (s *Server) FunctionHandler() fiber.Handler {
 
 		c.Request().SetRequestURI(addr)
 
-		go func() {
-			s.latencyCh <- scheduler.Latency{
-				NodeId:       s.ipfs.NodeId,
-				FunctionName: functionName,
-				RequestId:    requestId,
-			}
-		}()
+		now := time.Now()
 		defer func() {
 			s.latencyCh <- scheduler.Latency{
 				NodeId:       s.ipfs.NodeId,
 				FunctionName: functionName,
-				RequestId:    requestId,
-				Done:         true,
+				Value:        time.Since(now).Microseconds(),
 			}
 		}()
+
 		if err := s.client.Do(c.Request(), c.Response()); err != nil {
 			return fmt.Errorf("calling function: %s: %w", functionName, err)
 		}
@@ -194,8 +184,6 @@ func (s *Server) FunctionHandler() fiber.Handler {
 	}
 
 	return func(c *fiber.Ctx) error {
-		requestId := utils.UUIDv4()
-
 		functionName := c.Params("name")
 		if functionName == "" {
 			return fmt.Errorf("Provide function name in the request path")
@@ -207,8 +195,8 @@ func (s *Server) FunctionHandler() fiber.Handler {
 		}
 
 		if nodeId == s.ipfs.NodeId {
-			return handle(functionName, requestId, c)
+			return handle(functionName, c)
 		}
-		return offload(functionName, requestId, nodeId, c)
+		return offload(functionName, nodeId, c)
 	}
 }

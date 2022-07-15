@@ -13,8 +13,7 @@ import (
 type Latency struct {
 	NodeId       string
 	FunctionName string
-	RequestId    string
-	Done         bool
+	Value        int64
 }
 
 type heatbeatWithExpiry struct {
@@ -41,25 +40,13 @@ func New(
 	}
 	go func() {
 		ewmas := map[string]ewma.MovingAverage{}
-		inflight := map[string]time.Time{}
 		for latency := range latencyCh {
-			if !latency.Done {
-				inflight[latency.RequestId] = time.Now()
-				continue
-			}
-
-			t, ok := inflight[latency.RequestId]
-			if !ok {
-				continue
-			}
-			since := time.Since(t)
-
 			key := latency.NodeId + "." + latency.FunctionName
 			avg, ok := ewmas[key]
 			if !ok {
 				avg = ewma.NewMovingAverage()
 			}
-			avg.Add(float64(since.Microseconds()))
+			avg.Add(float64(latency.Value))
 			ewmas[key] = avg
 			s.latencies.Store(key, avg.Value())
 
