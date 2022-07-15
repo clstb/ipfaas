@@ -101,7 +101,7 @@ func (s *Server) FunctionHandler() fiber.Handler {
 	offload := func(functionName, nodeId string, c *fiber.Ctx) error {
 		requestId := utils.UUIDv4()
 
-		ch := make(chan messages.FunctionResponse)
+		ch := make(chan messages.FunctionResponse, 1)
 		headers := c.GetReqHeaders()
 		_, isCID := headers["Ipfaas-Is-Cid"]
 		_, publishIpfs := headers["Ipfaas-Publish-Ipfs"]

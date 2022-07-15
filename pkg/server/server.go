@@ -13,7 +13,6 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/go-cni"
 	"github.com/gofiber/fiber/v2"
-	icore "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/valyala/fasthttp"
@@ -42,8 +41,8 @@ func New(
 	cni cni.CNI,
 	repository string,
 ) (*Server, error) {
-	heartbeatCh := make(chan messages.Heartbeat)
-	latencyCh := make(chan scheduler.Latency)
+	heartbeatCh := make(chan messages.Heartbeat, 10)
+	latencyCh := make(chan scheduler.Latency, 100)
 
 	scheduler := scheduler.New(
 		latencyCh,
@@ -109,20 +108,18 @@ func New(
 
 				go s.handleFunctionRequest(functionRequest)
 			case topic == "heartbeats":
-				go func(msg icore.PubSubMessage) {
-					heartbeat := messages.Heartbeat{}
-					if err = msgpack.Unmarshal(msg.Data(), &heartbeat); err != nil {
-						return
-					}
+				heartbeat := messages.Heartbeat{}
+				if err = msgpack.Unmarshal(msg.Data(), &heartbeat); err != nil {
+					return
+				}
 
-					if msg.From().String() == ipfs.NodeId {
-						for _, function := range heartbeat.Functions {
-							err = s.ipfs.Subscribe(ctx, function+"_requests")
-							err = s.ipfs.Subscribe(ctx, function+"_responses")
-						}
+				if msg.From().String() == ipfs.NodeId {
+					for _, function := range heartbeat.Functions {
+						err = s.ipfs.Subscribe(ctx, function+"_requests")
+						err = s.ipfs.Subscribe(ctx, function+"_responses")
 					}
-					heartbeatCh <- heartbeat
-				}(msg)
+				}
+				heartbeatCh <- heartbeat
 			}
 			if err != nil {
 				logger.Error("handling message", zap.Error(err))

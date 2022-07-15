@@ -92,7 +92,7 @@ func New(
 		CoreAPI:       api,
 		NodeId:        node.Identity.String(),
 		subscriptions: map[string]struct{}{},
-		messages:      make(chan icore.PubSubMessage),
+		messages:      make(chan icore.PubSubMessage, 100),
 		logger:        logger.With(zap.String("component", "ipfs")),
 	}, nil
 }
