@@ -124,6 +124,10 @@ func (s *Scheduler) Schedule(functionName string) (string, error) {
 	}
 
 	nodeIds := v.([]string)
+	if len(nodeIds) == 1 {
+		return nodeIds[0], nil
+	}
+
 	firstNode := nodeIds[rand.Intn(len(nodeIds))]
 	secondNode := nodeIds[rand.Intn(len(nodeIds))]
 	for secondNode == firstNode {
