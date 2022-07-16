@@ -1,6 +1,8 @@
 #!/bin/bash
 
-export URL=$1
+set -e
+
+export HOST=$1
 RATE=$2
 NODES=$3
 
@@ -9,9 +11,7 @@ do
   mkdir -p ./$i
 done
 
-mkdir -p ./$PLATFORM
-
-jq -ncM --arg URL "$URL" '{method: "POST", url: env.URL, body: "Hello world!" | @base64, header: {"Content-Type": ["text/plain"]}}' | \
+jq -ncM --arg HOST "$HOST" '{method: "POST", url: "http://\(env.Host)/function/echo", body: "Hello world!" | @base64, header: {"Content-Type": ["text/plain"]}}' | \
   vegeta attack -duration=5m -rate=$RATE -format=json | \
   tee latencies.bin | \
   vegeta report -every=200ms &
