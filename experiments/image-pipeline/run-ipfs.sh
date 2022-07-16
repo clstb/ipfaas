@@ -2,8 +2,9 @@
 
 set -e
 
-export HOST=$1
-NODES=$2
+export CURL_HOST=$1
+export SHASUM_HOST=$2
+NODES=$3
 
 for i in ${NODES//,/ }
 do
@@ -12,8 +13,8 @@ done
 
 vegeta attack -rate=1/s -lazy -format=json -duration=5m < <(
     while true; do
-        export BODY=$(tr -d '\n' < <(echo "-Ls https://picsum.photos/1000 --output -" | curl -s -XPOST -H "Ipfaas-Publish-Ipfs: true" --data-binary @- http://$HOST/function/curl --output -))
-        jq -ncM --arg HOST "$HOST" --arg BODY "$BODY" '{method: "POST", url: "http://\(env.HOST)/function/shasum", body: env.BODY | @base64, header: {"Content-Type": ["text/plain"], "Ipfaas-Is-Cid": ["true"]}}'
+        export BODY=$(tr -d '\n' < <(echo "-Ls https://picsum.photos/1000 --output -" | curl -s -XPOST -H "Ipfaas-Publish-Ipfs: true" --data-binary @- http://$CURL_HOST/function/curl --output -))
+        jq -ncM --arg SHASUM_HOST "$SHASUM_HOST" --arg BODY "$BODY" '{method: "POST", url: "http://\(env.SHASUM_HOST)/function/shasum", body: env.BODY | @base64, header: {"Content-Type": ["text/plain"], "Ipfaas-Is-Cid": ["true"]}}'
     done
 ) | \
     tee latencies.bin | \

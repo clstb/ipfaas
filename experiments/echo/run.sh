@@ -11,7 +11,7 @@ do
   mkdir -p ./$i
 done
 
-jq -ncM --arg HOST "$HOST" '{method: "POST", url: "http://\(env.Host)/function/echo", body: "Hello world!" | @base64, header: {"Content-Type": ["text/plain"]}}' | \
+jq -ncM --arg HOST "$HOST" '{method: "POST", url: "http://\(env.HOST)/function/echo", body: "Hello world!" | @base64, header: {"Content-Type": ["text/plain"]}}' | \
   vegeta attack -duration=5m -rate=$RATE -format=json | \
   tee latencies.bin | \
   vegeta report -every=200ms &
