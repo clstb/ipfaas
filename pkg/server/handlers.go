@@ -157,7 +157,29 @@ func (s *Server) FunctionHandler() fiber.Handler {
 			return fmt.Errorf("resolving function")
 		}
 
-		c.Request().SetRequestURI(addr)
+		req := c.Request()
+		headers := c.GetReqHeaders()
+
+		req.SetRequestURI(addr)
+
+		_, isCID := headers["Ipfaas-Is-Cid"]
+		if isCID {
+			cid, err := cid.Decode(string(req.Body()))
+			if err != nil {
+				return fmt.Errorf("casting cid: %w", err)
+			}
+
+			r, err := s.ipfs.Block().Get(c.Context(), path.IpfsPath(cid))
+			if err != nil {
+				return fmt.Errorf("getting block: %w", err)
+			}
+
+			b, err := io.ReadAll(r)
+			if err != nil {
+				return fmt.Errorf("reading block: %w", err)
+			}
+			req.SetBody(b)
+		}
 
 		now := time.Now()
 		defer func() {
@@ -168,8 +190,19 @@ func (s *Server) FunctionHandler() fiber.Handler {
 			}
 		}()
 
-		if err := s.client.Do(c.Request(), c.Response()); err != nil {
+		res := c.Response()
+		if err := s.client.Do(req, res); err != nil {
 			return fmt.Errorf("calling function: %s: %w", functionName, err)
+		}
+
+		_, publishIpfs := headers["Ipfaas-Publish-Ipfs"]
+		if publishIpfs {
+			block, err := s.ipfs.Block().Put(c.Context(), bytes.NewReader(res.Body()))
+			if err != nil {
+				return fmt.Errorf("putting block: %w", err)
+			}
+
+			res.SetBodyString(block.Path().Cid().String())
 		}
 
 		return nil
