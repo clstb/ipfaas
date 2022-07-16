@@ -125,6 +125,10 @@ func (s *Server) FunctionHandler() fiber.Handler {
 		s.offloads.Store(requestId, ch)
 		defer s.offloads.Delete(requestId)
 
+		if err := s.ipfs.Subscribe(c.Context(), functionName+"_responses"); err != nil {
+			return err
+		}
+
 		if err := s.ipfs.PubSub().Publish(
 			c.Context(),
 			functionName+"_requests",
