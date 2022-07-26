@@ -11,10 +11,8 @@ do
   mkdir -p ./$i
 done
 
-jq -ncM --arg HOST "$HOST" '{method: "POST", url: "http://\(env.HOST)/function/echo", body: "Hello world!" | @base64, header: {"Content-Type": ["text/plain"]}}' | \
-  vegeta attack -duration=5m -rate=$RATE -format=json | \
-  tee latencies.bin | \
-  vegeta report -every=200ms &
+jq --arg HOST "$HOST" -ncM 'while(true; .+1) | {method: "POST", url: "http://\(env.HOST)/function/echo", body: . | @base64, header: {"Content-Type": ["text/plain"]}}' | \
+vegeta attack -lazy --format=json -duration=2m -rate $RATE | tee latencies.bin | vegeta report -every=200ms &
 
 while [[ -n $(jobs -r) ]]; do
   for i in ${NODES//,/ }
@@ -22,7 +20,6 @@ while [[ -n $(jobs -r) ]]; do
     echo $[100-$(multipass exec $i -- vmstat 1 2|tail -1|awk '{print $15}')] >> ./$i/cpu-raw.txt;
     multipass exec $i -- free | sed -n '2p' | awk '{print $3}' >> ./$i/ram-raw.txt;
   done
-  sleep 1;
 done
 
 for i in ${NODES//,/ }
